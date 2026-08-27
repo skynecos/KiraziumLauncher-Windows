@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>Kirazium Launcher</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="titlebar">
+        <div class="window-title"><img src="assets/kirazium-logo.webp" alt=""><span>Kirazium Launcher</span></div>
+        <div class="server-title"><i></i> play.kirazium.com</div>
+        <div class="window-controls">
+          <button id="minimize-button" class="window-button" type="button" aria-label="Küçült"><svg viewBox="0 0 16 16"><path d="M3 8.5h10"/></svg></button>
+          <button id="maximize-button" class="window-button" type="button" aria-label="Büyüt"><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg></button>
+          <button id="close-button" class="window-button window-button--close" type="button" aria-label="Kapat"><svg viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
+        </div>
+      </header>
+
+      <nav class="top-menu" aria-label="Ana menü">
+        <button id="store-button" class="nav-item" type="button" aria-label="Mağaza yakında">
+          <svg viewBox="0 0 24 24"><path d="M4 9h16l-1 12H5L4 9Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg><span>MAĞAZA</span>
+        </button>
+        <button class="nav-item" type="button" data-view="versions">
+          <svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/></svg><span>SÜRÜMLER</span>
+        </button>
+        <button class="nav-logo nav-item--active" type="button" data-view="game" aria-label="Ana sayfa"><img src="assets/kirazium-logo.webp" alt="Kirazium"></button>
+        <button class="nav-item" type="button" data-view="game">
+          <svg viewBox="0 0 24 24"><path d="m3 11 9-7 9 7"/><path d="M5 10v10h14V10M9 20v-6h6v6"/></svg><span>ANA SAYFA</span>
+        </button>
+        <button class="nav-item" type="button" data-view="settings">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"/></svg><span>AYARLAR</span>
+        </button>
+      </nav>
+
+      <main>
+        <section id="game-view" class="view view--active game-view">
+          <img class="hero-background" src="assets/hero-kirazium.webp" alt="">
+          <div class="hero-shade"></div>
+          <div class="hero-copy"><h1>Launcher Çıktı!</h1><p>Tıkla ve Kirazium dünyasına katıl.</p></div>
+          <div id="content-hud-dock" class="content-hud-dock" aria-label="İçerik yönetimi">
+            <button class="content-hud-button" type="button" data-content-hud="mod">
+              <svg viewBox="0 0 24 24"><path d="M8 6h8a6 6 0 0 1 5.8 4.5l.9 4.1a3 3 0 0 1-5 2.9L15 15H9l-2.7 2.5a3 3 0 0 1-5-2.9l.9-4.1A6 6 0 0 1 8 6Z"/><path d="M7 10v4m-2-2h4m7-1h.01m2 3h.01"/></svg>
+              <span><strong>Modlar</strong><small>İndir ve yönet</small></span>
+            </button>
+            <button class="content-hud-button" type="button" data-content-hud="resourcepack">
+              <svg viewBox="0 0 24 24"><path d="m12 3 8 4-8 4-8-4 8-4Z"/><path d="m4 12 8 4 8-4M4 17l8 4 8-4"/></svg>
+              <span><strong>Kaynak Paketleri</strong><small>İndir ve yönet</small></span>
+            </button>
+          </div>
+          <aside id="content-hud-panel" class="content-hud-panel" aria-hidden="true">
+            <header class="content-hud-header">
+              <div><small id="content-hud-kicker">İÇERİK HUD</small><strong id="content-hud-title">Modlar</strong><span id="content-hud-profile">26.1.2 • Fabric</span></div>
+              <div class="content-hud-actions"><button id="open-content-folder" type="button" title="Klasörü aç"><svg viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3V6Z"/></svg></button><button id="close-content-hud" type="button" title="Kapat"><svg viewBox="0 0 24 24"><path d="m6 6 12 12m0-12L6 18"/></svg></button></div>
+            </header>
+            <div class="content-hud-tabs">
+              <button class="content-hud-tab content-hud-tab--active" type="button" data-hud-mode="discover">İNDİR</button>
+              <button class="content-hud-tab" type="button" data-hud-mode="installed">YÜKLÜLER</button>
+            </div>
+            <section id="content-hud-discover" class="content-hud-pane content-hud-pane--active">
+              <div class="search-row"><input id="content-search" type="search" maxlength="80" placeholder="Mod ara…"><button id="content-search-button" type="button">ARA</button></div>
+              <div id="market-results" class="card-list"><div class="empty-state">İçerik aramak için bir ad yaz.</div></div>
+            </section>
+            <section id="content-hud-installed" class="content-hud-pane">
+              <div id="installed-content" class="card-list"><div class="empty-state">Yüklü içerikler burada görünecek.</div></div>
+            </section>
+          </aside>
+          <button id="version-chip" class="version-chip" type="button"><span id="selected-version-label">26.1.2 • Fabric</span><small>Değiştir</small></button>
+          <button id="play-button" class="play-button" type="button"><span id="play-label">OYNA</span></button>
+          <div id="launch-progress" class="launch-progress" aria-hidden="true"><div><span id="progress-message">Hazırlanıyor…</span><strong id="progress-value">0%</strong></div><div class="progress-track"><i id="progress-bar"></i></div></div>
+          <div id="error-panel" class="error-panel" role="alert" aria-hidden="true"><div><strong>Oyun başlatılamadı</strong><span id="error-message">Ayrıntılı hata kaydı oluşturuldu.</span></div><button id="open-log-button" type="button">Hata kaydını aç</button></div>
+          <div id="game-message" class="toast" role="status" aria-live="polite"></div>
+        </section>
+
+        <section id="versions-view" class="view panel-view">
+          <div class="panel-heading"><div><span>MINECRAFT</span><h2>Sürümler</h2><p>Oynamak istediğin resmi sürümü seç; ilk açılışta otomatik indirilir.</p></div></div>
+          <div class="version-card">
+            <label for="version-select">Minecraft sürümü</label><select id="version-select"><option value="26.1.2">26.1.2</option></select>
+            <label class="fabric-choice"><span><strong>Fabric Loader</strong><small>Mod kullanmak için etkin olmalı.</small></span><input id="fabric-enabled" type="checkbox" checked><i></i></label>
+            <div id="version-install-state" class="version-state">Sürüm bilgileri alınıyor…</div>
+            <button id="save-version-button" class="primary-small" type="button">BU SÜRÜMÜ KULLAN</button>
+          </div>
+        </section>
+
+        <section id="settings-view" class="view panel-view settings-view">
+          <div class="panel-heading"><div><span>BAŞLATICI</span><h2>Ayarlar</h2></div></div>
+          <div class="setting-card"><label for="memory-range"><span>Minecraft için ayrılan bellek</span><strong id="settings-memory-value">4 GB</strong></label><input id="memory-range" type="range" min="2" max="16" step="1" value="4"><div class="range-labels"><span>2 GB</span><span>16 GB</span></div></div>
+          <label class="toggle-card"><span><strong>Oyun açılınca launcher’ı kapat</strong><small>Arka planda bellek tüketimini azaltır.</small></span><input id="close-on-launch" type="checkbox" checked><i></i></label>
+          <div class="version-row">Kirazium Launcher <span id="app-version">v0.5.0</span></div>
+        </section>
+      </main>
+
+      <footer class="account-bar">
+        <div class="account"><img src="assets/kirazium-logo.webp" alt=""><input id="nickname" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Minecraft adın"></div>
+        <div class="memory-summary"><span>RAM</span><strong id="memory-value">4 GB</strong></div>
+        <button id="logout-button" class="logout-button" type="button"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4m4-4H9"/></svg>Çıkış Yap</button>
+      </footer>
+    </div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

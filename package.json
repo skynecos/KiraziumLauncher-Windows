@@ -1,0 +1,84 @@
+{
+  "name": "kirazium-launcher-windows",
+  "version": "0.5.0",
+  "description": "Kirazium için güvenli ve sade Windows Minecraft başlatıcısı",
+  "main": "dist/main/main.js",
+  "author": "Kirazium",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc -p tsconfig.json && node scripts/copy-static.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check:renderer": "node --check src/renderer/renderer.js",
+    "test": "npm run build && node --test tests/*.test.cjs",
+    "verify": "npm run typecheck && npm run check:renderer && npm test",
+    "verify:remote": "node scripts/check-remote.mjs",
+    "verify:game": "node scripts/verify-game-install.cjs",
+    "start": "npm run build && electron .",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
+  },
+  "build": {
+    "appId": "com.kirazium.launcher",
+    "productName": "Kirazium Launcher",
+    "artifactName": "KiraziumLauncher-Setup-${version}.${ext}",
+    "asar": true,
+    "compression": "maximum",
+    "electronLanguages": [
+      "tr",
+      "en-US"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "language": "1055",
+      "installerLanguages": [
+        "tr_TR"
+      ],
+      "multiLanguageInstaller": false,
+      "displayLanguageSelector": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Kirazium Launcher",
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "electron": "44.0.0",
+    "electron-builder": "26.15.3",
+    "typescript": "7.0.2"
+  },
+  "dependencies": {
+    "@xmcl/core": "2.15.1",
+    "@xmcl/installer": "6.1.2",
+    "@xmcl/task": "4.1.1",
+    "@xmcl/user": "4.3.0"
+  },
+  "overrides": {
+    "undici": "7.29.0",
+    "uuid": "11.1.1"
+  }
+}
