@@ -80,6 +80,10 @@ export interface LaunchResult {
 }
 
 export interface KiraziumApi {
+  onMicrosoftCode: (callback: (code: string) => void) => () => void
+  getAccount: () => Promise<{ name: string; id: string; microsoft: boolean; loginReady: boolean }>
+  loginMicrosoft: () => Promise<{ name: string; id: string; microsoft: boolean; loginReady: boolean }>
+  logoutAccount: () => Promise<{ name: string; id: string; microsoft: boolean; loginReady: boolean }>
   getLauncherInfo: () => Promise<LauncherInfo>
   getLauncherState: () => Promise<LauncherRuntimeState>
   getSettings: () => Promise<LauncherSettings>

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://cdn.modrinth.com; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://cdn.modrinth.com https://mc-heads.net; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Kirazium Launcher</title>
     <link rel="stylesheet" href="styles.css">
   </head>
@@ -93,11 +93,18 @@
       </main>
 
       <footer class="account-bar">
-        <div class="account"><img src="assets/kirazium-logo.png" alt=""><input id="nickname" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Minecraft adın"></div>
+        <div class="account"><button id="account-menu-button" type="button" aria-label="Hesap menüsü" aria-expanded="false" aria-controls="account-menu"><img id="player-head" src="assets/default-head.svg" alt="Oyuncu kafası"><span>⌃</span></button><input id="nickname" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Minecraft adın"><span id="account-kind">Çevrimdışı</span></div>
+        <section id="account-menu" class="account-menu" hidden aria-label="Hesap yönetimi">
+          <header><div><small>HESABIM</small><strong id="account-menu-name">Oyuncu</strong><span id="account-menu-status">Çevrimdışı profil</span></div><button id="close-account-menu" type="button" aria-label="Hesap menüsünü kapat">×</button></header>
+          <p id="account-menu-description">Oyuncu adını alt çubuktan değiştirebilirsin. Orijinal sunucular için Minecraft Java hesabınla giriş yap.</p>
+          <button id="microsoft-login" class="account-login" type="button"><span class="microsoft-mark" aria-hidden="true">▦</span><span>Microsoft ile giriş</span></button>
+          <button id="account-signout" class="account-signout" type="button" hidden>Hesaptan çık · Çevrimdışı kullan</button>
+        </section>
         <div class="memory-summary"><span>RAM</span><strong id="memory-value">4 GB</strong></div>
-        <button id="logout-button" class="logout-button" type="button"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4m4-4H9"/></svg>Çıkış Yap</button>
+        <button id="logout-button" class="logout-button" type="button"><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4m4-4H9"/></svg><span>Kapat</span></button>
       </footer>
     </div>
+    <dialog id="microsoft-dialog"><h2>Microsoft ile giriş</h2><p>Tarayıcıda Microsoft hesabınla giriş yap ve bu kodu kullan:</p><strong id="microsoft-code"></strong><p>Şifren launcher’a gönderilmez.</p><button id="cancel-microsoft" type="button">İptal</button></dialog>
     <script src="renderer.js"></script>
   </body>
 </html>

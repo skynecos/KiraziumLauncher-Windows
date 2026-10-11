@@ -2,6 +2,14 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { ContentType, KiraziumApi, LauncherProgress, LauncherSettings } from '../shared/contracts'
 
 const api: KiraziumApi = Object.freeze({
+  onMicrosoftCode: (callback: (code: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, code: string): void => callback(code)
+    ipcRenderer.on('account:code', listener)
+    return () => ipcRenderer.removeListener('account:code', listener)
+  },
+  getAccount: () => ipcRenderer.invoke('account:read'),
+  loginMicrosoft: () => ipcRenderer.invoke('account:login'),
+  logoutAccount: () => ipcRenderer.invoke('account:logout'),
   getLauncherInfo: () => ipcRenderer.invoke('launcher:get-info'),
   getLauncherState: () => ipcRenderer.invoke('launcher:get-state'),
   getSettings: () => ipcRenderer.invoke('settings:read'),

@@ -37,6 +37,64 @@ let hudType = 'mod'
 let hudMode = 'discover'
 let toastTimer
 let marketRequest = 0
+let account = { name: '', id: '', microsoft: false, loginReady: false }
+const playerHead = $('#player-head')
+const microsoftLogin = $('#microsoft-login')
+const microsoftDialog = $('#microsoft-dialog')
+window.kirazium.onMicrosoftCode(code => { $('#microsoft-code').textContent = code; microsoftDialog.showModal() })
+$('#cancel-microsoft').addEventListener('click', () => void window.kirazium.logoutAccount().then(value => { account = value; refreshAccount(); microsoftDialog.close() }))
+microsoftDialog.addEventListener('cancel', () => void window.kirazium.logoutAccount())
+const accountMenu = $('#account-menu')
+const accountMenuButton = $('#account-menu-button')
+
+function closeAccountMenu() {
+  accountMenu.hidden = true
+  accountMenuButton.setAttribute('aria-expanded', 'false')
+}
+accountMenuButton.addEventListener('click', () => {
+  refreshAccount()
+  accountMenu.hidden = !accountMenu.hidden
+  accountMenuButton.setAttribute('aria-expanded', String(!accountMenu.hidden))
+})
+$('#close-account-menu').addEventListener('click', () => { closeAccountMenu(); accountMenuButton.focus() })
+document.addEventListener('click', event => {
+  if (!accountMenu.contains(event.target) && !accountMenuButton.contains(event.target)) closeAccountMenu()
+})
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && !accountMenu.hidden) { closeAccountMenu(); accountMenuButton.focus() }
+})
+
+function refreshAccount() {
+  nicknameInput.readOnly = account.microsoft
+  if (account.microsoft) nicknameInput.value = account.name
+  $('#account-kind').textContent = account.microsoft ? 'Microsoft' : 'Çevrimdışı'
+  $('#account-menu-name').textContent = account.microsoft ? account.name : nicknameInput.value.trim() || 'Oyuncu'
+  $('#account-menu-status').textContent = account.microsoft ? 'Microsoft · Minecraft Java' : 'Çevrimdışı profil'
+  $('#account-menu-description').textContent = account.microsoft ? 'Minecraft profilin hesabından doğrulandı. Oyuncu adın ve skinin bu hesaba göre kullanılır.' : 'Oyuncu adını alt çubuktan değiştirebilirsin. Orijinal sunucular için Minecraft Java hesabınla giriş yap.'
+  $('#account-signout').hidden = !account.microsoft
+  microsoftLogin.hidden = account.microsoft
+  microsoftLogin.title = account.loginReady ? 'Minecraft Java hesabınla giriş yap' : 'Microsoft uygulama kaydı bekleniyor'
+  refreshPlayerHead()
+}
+
+function refreshPlayerHead() {
+  const identity = account.microsoft ? account.id : nicknameInput.value.trim()
+  playerHead.src = /^[a-f0-9]{32}$/i.test(identity) || /^[A-Za-z0-9_]{3,16}$/.test(identity)
+    ? `https://mc-heads.net/avatar/${encodeURIComponent(identity)}/64`
+    : 'assets/default-head.svg'
+}
+playerHead.addEventListener('error', () => {
+  if (!playerHead.getAttribute('src').includes('default-head.svg')) playerHead.src = 'assets/default-head.svg'
+})
+microsoftLogin.addEventListener('click', async () => {
+  if (!account.loginReady) { showMessage('Microsoft girişi için uygulama kaydı henüz tamamlanmadı.'); return }
+  microsoftLogin.disabled = true
+  closeAccountMenu()
+  playButton.disabled = true
+  try { account = await window.kirazium.loginMicrosoft(); refreshAccount(); showMessage(`${account.name} hesabıyla giriş yapıldı.`) }
+  catch { showMessage('Microsoft girişi tamamlanamadı. Java lisansını ve hesabını kontrol et.') }
+  finally { microsoftDialog.close(); microsoftLogin.disabled = false; playButton.disabled = false }
+})
 
 function profileLabel() {
   return `${settings.gameVersion} • ${settings.useFabric ? 'Fabric' : 'Vanilla'}`
@@ -304,6 +362,10 @@ $('#minimize-button').addEventListener('click', () => void window.kirazium.minim
 $('#maximize-button').addEventListener('click', () => void window.kirazium.toggleMaximizeWindow())
 $('#close-button').addEventListener('click', () => void window.kirazium.closeWindow())
 $('#logout-button').addEventListener('click', () => void window.kirazium.closeWindow())
+$('#account-signout').addEventListener('click', async () => {
+  try { account = await window.kirazium.logoutAccount(); nicknameInput.value = settings.nickname; refreshAccount() }
+  catch { showMessage('Hesaptan çıkmak için önce oyunu kapat.') }
+})
 $('#version-chip').addEventListener('click', () => showView('versions'))
 $('#open-log-button').addEventListener('click', () => void window.kirazium.openLauncherLog().catch(() => showMessage('Hata kaydı açılamadı.')))
 $('#content-search-button').addEventListener('click', () => void searchMarket())
@@ -331,10 +393,11 @@ memoryRange.addEventListener('input', () => updateMemoryUi(Number(memoryRange.va
 memoryRange.addEventListener('change', () => void persistSettings())
 closeOnLaunch.addEventListener('change', () => void persistSettings())
 nicknameInput.addEventListener('change', () => void persistSettings())
+nicknameInput.addEventListener('change', refreshAccount)
 
 playButton.addEventListener('click', async () => {
   const nickname = nicknameInput.value.trim()
-  if (!/^[A-Za-z0-9_]{3,16}$/.test(nickname)) {
+  if (!account.microsoft && !/^[A-Za-z0-9_]{3,16}$/.test(nickname)) {
     showMessage('Oyuncu adı 3–16 karakter olmalı; yalnızca harf, rakam ve alt çizgi kullanılabilir.')
     nicknameInput.focus()
     return
@@ -372,6 +435,8 @@ async function initialize() {
     ])
     settings = savedSettings
     nicknameInput.value = settings.nickname
+    account = await window.kirazium.getAccount()
+    refreshAccount()
     const memoryGb = Math.max(2, Math.min(16, Math.round(settings.maxMemoryMb / 1024)))
     memoryRange.value = String(memoryGb)
     closeOnLaunch.checked = settings.closeOnLaunch

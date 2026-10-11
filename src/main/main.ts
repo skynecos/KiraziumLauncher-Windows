@@ -1,9 +1,12 @@
-import { app, BrowserWindow, ipcMain, shell, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, safeStorage, shell, type IpcMainInvokeEvent } from 'electron'
 import { join } from 'node:path'
 import type { LauncherInfo } from '../shared/contracts'
 import type { ContentType } from '../shared/contracts'
 import { LauncherService } from './launcher'
 import { normalizeSettings, readSettings, saveSettings } from './settings'
+import { AccountService } from './account'
+import { MICROSOFT_CLIENT_ID } from './auth-config'
+
 
 const IPC = Object.freeze({
   launcherInfo: 'launcher:get-info',
@@ -26,6 +29,7 @@ const IPC = Object.freeze({
 
 let mainWindow: BrowserWindow | null = null
 let launcherService: LauncherService | null = null
+let accounts: AccountService
 
 function isTrustedSender(event: IpcMainInvokeEvent): boolean {
   const senderUrl = event.senderFrame?.url
@@ -47,6 +51,26 @@ function requireText(value: unknown, label: string, maxLength: number): string {
 }
 
 function registerIpcHandlers(service: LauncherService): void {
+  ipcMain.handle('account:read', event => { requireTrustedSender(event); return accounts.view() })
+  ipcMain.handle('account:login', async event => {
+    requireTrustedSender(event)
+    if (service.getState().busy || service.getState().gameRunning) throw new Error('Giriş yapmak için önce oyunu kapat.')
+    try {
+      return await accounts.signIn(async code => {
+        event.sender.send('account:code', code)
+        await shell.openExternal('https://www.microsoft.com/link')
+      })
+    } catch (error) {
+      // Do not expose provider errors (they may contain token request details).
+      if (!accounts.view().loginReady) throw new Error('Microsoft girişi uygulama kaydı bekliyor.')
+      throw new Error('Microsoft girişi tamamlanamadı. Java lisansını ve uygulama yetkisini kontrol edip tekrar dene.')
+    }
+  })
+  ipcMain.handle('account:logout', event => {
+    requireTrustedSender(event)
+    if (service.getState().busy || service.getState().gameRunning) throw new Error('Çıkış yapmak için önce oyunu kapat.')
+    return accounts.logout()
+  })
   ipcMain.handle(IPC.launcherInfo, (event): LauncherInfo => {
     requireTrustedSender(event)
     return {
@@ -199,12 +223,14 @@ if (!hasSingleInstanceLock) {
     mainWindow.focus()
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    accounts = new AccountService(app.getPath('userData'), MICROSOFT_CLIENT_ID, safeStorage)
+    await accounts.restore()
     launcherService = new LauncherService(app.getPath('userData'), (progress) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC.launcherProgress, progress)
       }
-    })
+    }, () => accounts.credentials())
     registerIpcHandlers(launcherService)
     mainWindow = createMainWindow()
 

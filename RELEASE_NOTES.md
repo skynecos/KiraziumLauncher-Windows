@@ -1,4 +1,9 @@
-Kirazium Windows Launcher 0.5.7
+Kirazium Windows Launcher 0.6.0
+
+- Microsoft hesabıyla tarayıcı üzerinden cihaz kodu girişi, Java lisansı ve Minecraft profil doğrulaması.
+- Hesap yenileme bilgisi Windows safeStorage ile şifreli saklanır; tokenlar arayüze gönderilmez.
+- Oyuncu adının yanında logo yerine skin kafası gösterilir. Çevrimiçi hesapta ad ve UUID doğrulanmış profilden alınır.
+- Mobil KiraziumClient ile aynı mevcut legacy Microsoft sağlayıcısı kullanılır. Gerçek hesapla giriş ve online-mode sunucu bağlantısı kullanıcı doğrulaması bekler.
 
 - Mobil sürümle aynı güncel logo ve sade, yuvarlatılmış HUD tasarımı.
 - Modrinth içerikleri panel açılınca görselleriyle otomatik listelenir.

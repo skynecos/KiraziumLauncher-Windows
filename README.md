@@ -28,6 +28,8 @@ Oyun dosyaları launcher verileri altında ayrı bir dizinde tutulur; kullanıc�
 
 ## Yerel geliştirme
 
+Microsoft girişi tarayıcıdaki cihaz kodu akışıyla yapılır. Java lisansı olmayan hesap çevrimiçi oturum oluşturamaz. Hesap yenileme bilgisi Windows'un şifreli deposunda saklanır. Sağlayıcı kimliği `src/main/auth-config.ts` içinde tanımlıdır; mobil KiraziumClient'ın mevcut legacy sağlayıcısı kullanılmaktadır. Gerçek hesapla giriş ve online-mode sunucu bağlantısı ayrıca test edilmelidir.
+
 ```powershell
 npm ci
 npm run verify
@@ -40,4 +42,4 @@ Windows kurulum dosyası:
 npm run dist:win
 ```
 
-Çıktı `release/KiraziumLauncher-Setup-0.5.7.exe` yolunda oluşur.
+Çıktı `release/KiraziumLauncher-Setup-0.6.0.exe` yolunda oluşur.

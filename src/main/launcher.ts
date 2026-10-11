@@ -36,6 +36,7 @@ import type {
   MinecraftVersionOption,
 } from '../shared/contracts'
 import { ContentService } from './content'
+import type { OnlineSession } from './account'
 
 export const GAME_VERSION = '26.1.2'
 export const FABRIC_LOADER_VERSION = '0.19.3'
@@ -176,7 +177,7 @@ export class LauncherService {
   private operation: Promise<LaunchResult> | null = null
   private gameProcess: ChildProcess | null = null
 
-  constructor(userDataPath: string, onProgress: ProgressListener) {
+  constructor(userDataPath: string, onProgress: ProgressListener, private readonly onlineCredentials: () => Promise<OnlineSession | null> = async () => null) {
     this.gameRoot = join(userDataPath, 'minecraft')
     this.runtimeRoot = join(userDataPath, 'runtime')
     this.logPath = join(userDataPath, 'logs', 'launcher-last.log')
@@ -248,9 +249,6 @@ export class LauncherService {
     }
     if (this.gameProcess) {
       return Promise.resolve({ ok: false, message: 'Minecraft zaten çalışıyor.' })
-    }
-    if (!settings.nickname) {
-      return Promise.resolve({ ok: false, message: 'Geçerli bir oyuncu adı yazmalısın.' })
     }
 
     this.operation = this.prepareAndLaunch(settings)
@@ -661,9 +659,14 @@ export class LauncherService {
       await mkdir(this.gameRoot, { recursive: true })
       await mkdir(this.runtimeRoot, { recursive: true })
 
+      let online: OnlineSession | null
+      try { online = await this.onlineCredentials() }
+      catch { throw new Error('Microsoft oturumu doğrulanamadı. Hesabından çıkıp yeniden giriş yap.') }
+      if (!online && !/^[A-Za-z0-9_]{3,16}$/.test(settings.nickname)) throw new Error('Geçerli bir oyuncu adı yazmalısın.')
+
       const version = await this.prepareMinecraft(settings.gameVersion, settings.useFabric)
       const javaPath = await this.prepareJava(version)
-      const authentication = offline(settings.nickname)
+      const authentication = online ? { selectedProfile: { id: online.id, name: online.name }, accessToken: online.accessToken } : offline(settings.nickname)
       const instanceRoot = this.content.getInstanceRoot(settings)
       await mkdir(instanceRoot, { recursive: true })
       const joinsKirazium = settings.gameVersion === GAME_VERSION
@@ -679,7 +682,7 @@ export class LauncherService {
         version,
         gameProfile: authentication.selectedProfile,
         accessToken: authentication.accessToken,
-        userType: 'legacy',
+        userType: online ? 'mojang' : 'legacy',
         properties: {},
         launcherName: 'Kirazium Launcher',
         launcherBrand: 'Kirazium',
