@@ -12,10 +12,17 @@ const service = new LauncherService(verificationRoot, (progress) => {
   console.log(`[${progress.progress}%] ${progress.message}`)
 })
 
-service.verifyInstallation().then((result) => {
-  console.log(`Gerçek kurulum doğrulandı: ${result.version}`)
-  console.log(`Java doğrulandı: ${result.javaPath}`)
-}).catch((error) => {
+async function verify() {
+  for (const version of ['26.1.2', '26.2', '1.21.11']) {
+    for (const fabric of [false, true]) {
+      const result = await service.verifyInstallation(version, fabric)
+      console.log(`Gerçek kurulum doğrulandı: ${result.version}`)
+      console.log(`Java doğrulandı: ${result.javaPath}`)
+    }
+  }
+}
+
+verify().catch((error) => {
   console.error(error)
   process.exitCode = 1
 })

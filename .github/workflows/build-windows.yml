@@ -74,7 +74,7 @@ jobs:
           if ($LASTEXITCODE -eq 0) {
             gh release upload $tag $installer.FullName --clobber
           } else {
-            gh release create $tag $installer.FullName --target $env:GITHUB_SHA --title "Kirazium Launcher $tag" --notes "Doğrudan Windows kurulum dosyası."
+            gh release create $tag $installer.FullName --target $env:GITHUB_SHA --title "Kirazium Launcher $tag" --notes-file RELEASE_NOTES.md
           }
 
       - name: Doğrulama sonucunu commit'e yaz

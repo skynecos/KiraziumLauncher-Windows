@@ -36,6 +36,7 @@ let versions = []
 let hudType = 'mod'
 let hudMode = 'discover'
 let toastTimer
+let marketRequest = 0
 
 function profileLabel() {
   return `${settings.gameVersion} • ${settings.useFabric ? 'Fabric' : 'Vanilla'}`
@@ -44,7 +45,7 @@ function profileLabel() {
 function refreshProfileLabels() {
   const label = profileLabel()
   selectedVersionLabel.textContent = label
-  contentHudProfile.textContent = label
+  contentHudProfile.textContent = `Profil: ${label}`
   const selected = versions.find((version) => version.id === settings.gameVersion)
   versionState.textContent = selected?.installed
     ? 'Bu sürüm daha önce indirildi.'
@@ -84,6 +85,7 @@ function setHudMode(mode) {
   $('#content-hud-discover').classList.toggle('content-hud-pane--active', mode === 'discover')
   $('#content-hud-installed').classList.toggle('content-hud-pane--active', mode === 'installed')
   if (mode === 'installed') void loadInstalledContent()
+  else void searchMarket()
 }
 
 function openContentHud(type) {
@@ -100,7 +102,10 @@ function openContentHud(type) {
   contentHudPanel.classList.add('content-hud-panel--visible')
   contentHudPanel.setAttribute('aria-hidden', 'false')
   if (hudMode === 'installed') void loadInstalledContent()
-  else setEmpty(marketResults, `${contentTypeLabel()} için bir ad ara.`)
+  else {
+    contentSearch.value = ''
+    void searchMarket()
+  }
 }
 
 function hideError() {
@@ -149,7 +154,7 @@ function formatDownloads(value) {
   return new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
-function renderMarketResults(projects) {
+function renderMarketResults(projects, profile = { ...settings }) {
   marketResults.replaceChildren()
   if (!projects.length) {
     setEmpty(marketResults, 'Bu sürüm için uyumlu içerik bulunamadı.')
@@ -158,13 +163,27 @@ function renderMarketResults(projects) {
   for (const project of projects) {
     const card = document.createElement('article')
     card.className = 'content-card'
+    card.classList.add('content-card--project')
+    const artwork = document.createElement('div')
+    artwork.className = 'content-artwork'
+    artwork.textContent = project.title.slice(0, 1).toUpperCase()
+    if (project.iconUrl) {
+      const image = document.createElement('img')
+      image.src = project.iconUrl
+      image.alt = ''
+      image.loading = 'lazy'
+      image.referrerPolicy = 'no-referrer'
+      image.addEventListener('error', () => image.remove())
+      artwork.append(image)
+    }
+    const projectType = hudType
     const copy = document.createElement('div')
     const title = document.createElement('strong')
     title.textContent = project.title
     const description = document.createElement('p')
     description.textContent = project.description
     const meta = document.createElement('span')
-    meta.textContent = `${project.author} • ${formatDownloads(project.downloads)} indirme`
+    meta.textContent = `${profile.gameVersion} • ${project.author} • ${formatDownloads(project.downloads)} indirme`
     const button = document.createElement('button')
     button.type = 'button'
     button.textContent = 'İNDİR'
@@ -172,8 +191,7 @@ function renderMarketResults(projects) {
       button.disabled = true
       button.textContent = 'İNDİRİLİYOR'
       try {
-        await persistSettings()
-        const result = await window.kirazium.installContent(hudType, project.projectId, settings)
+        const result = await window.kirazium.installContent(projectType, project.projectId, profile)
         showMessage(result.message)
         button.textContent = result.ok ? 'İNDİRİLDİ' : 'TEKRAR DENE'
       } catch {
@@ -184,23 +202,27 @@ function renderMarketResults(projects) {
       }
     })
     copy.append(title, description, meta)
-    card.append(copy, button)
+    card.append(artwork, copy, button)
     marketResults.append(card)
   }
 }
 
 async function searchMarket() {
+  const request = ++marketRequest
+  const type = hudType
+  const query = contentSearch.value
   setEmpty(marketResults, 'İçerikler aranıyor…')
   try {
     await persistSettings()
-    const projects = await window.kirazium.searchContent(hudType, contentSearch.value, settings)
-    renderMarketResults(projects)
+    const profile = { ...settings }
+    const projects = await window.kirazium.searchContent(type, query, profile)
+    if (request === marketRequest && type === hudType && profile.gameVersion === settings.gameVersion && profile.useFabric === settings.useFabric) renderMarketResults(projects, profile)
   } catch {
-    setEmpty(marketResults, 'Modrinth servisine ulaşılamadı. Daha sonra tekrar dene.')
+    if (request === marketRequest && type === hudType) setEmpty(marketResults, 'Modrinth servisine ulaşılamadı. ARA düğmesiyle tekrar dene.')
   }
 }
 
-function renderInstalled(items) {
+function renderInstalled(items, profile = { ...settings }, type = hudType) {
   installedContent.replaceChildren()
   if (!items.length) {
     setEmpty(installedContent, hudType === 'mod' ? 'Bu profile kurulmuş mod yok.' : 'Bu profile kurulmuş kaynak paketi yok.')
@@ -221,8 +243,8 @@ function renderInstalled(items) {
     button.addEventListener('click', async () => {
       button.disabled = true
       try {
-        const next = await window.kirazium.setContentEnabled(hudType, item.fileName, !item.enabled, settings)
-        renderInstalled(next)
+        const next = await window.kirazium.setContentEnabled(type, item.fileName, !item.enabled, profile)
+        if (type === hudType && profile.gameVersion === settings.gameVersion && profile.useFabric === settings.useFabric) renderInstalled(next, profile, type)
       } catch {
         showMessage('İçerik durumu değiştirilemedi.')
         button.disabled = false
@@ -235,10 +257,13 @@ function renderInstalled(items) {
 }
 
 async function loadInstalledContent() {
+  const type = hudType
   setEmpty(installedContent, 'İçerikler okunuyor…')
   try {
     await persistSettings()
-    renderInstalled(await window.kirazium.getInstalledContent(hudType, settings))
+    const profile = { ...settings }
+    const items = await window.kirazium.getInstalledContent(type, profile)
+    if (type === hudType && profile.gameVersion === settings.gameVersion && profile.useFabric === settings.useFabric) renderInstalled(items, profile, type)
   } catch {
     setEmpty(installedContent, 'İçerik klasörü okunamadı.')
   }

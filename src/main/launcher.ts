@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import type { ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { access, appendFile, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, appendFile, mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import {
@@ -15,7 +15,6 @@ import {
   getVersionList,
   getLoaderArtifactListFor,
   installFabric,
-  installFabricByLoaderArtifact,
   installJavaRuntimeTask,
   installResolvedAssetsTask,
   installResolvedLibrariesTask,
@@ -47,6 +46,7 @@ const execFileAsync = promisify(execFile)
 const INSTALL_ATTEMPTS = 4
 const RETRY_BASE_DELAY_MS = 850
 const DOWNLOAD_BATCH_SIZE = 12
+const VERSION_MANIFEST_URL = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json'
 const JAVA_RUNTIME_INDEX_URL = 'https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json'
 
 type ProgressListener = (progress: LauncherProgress) => void
@@ -149,6 +149,9 @@ export async function retryInstallOperation<T>(
 
 export function errorMessage(error: unknown): string {
   const details = describeError(error)
+  if (/için Fabric Loader bulunamadı|resmi sürüm listesinde bulunamadı|profili seçilen Minecraft|sürüm bilgisi .* eşleşmiyor/.test(details)) {
+    return error instanceof Error ? error.message : 'Seçilen sürüm için uyumlu profil bulunamadı.'
+  }
   if (/InvalidZip|Checksum|Validation/i.test(details)) {
     return 'İndirilen oyun dosyalarından biri doğrulanamadı. Launcher yeniden indirmeyi denedi; bağlantını kontrol edip tekrar Oyna’ya bas.'
   }
@@ -195,16 +198,16 @@ export class LauncherService {
     }
   }
 
-  async verifyInstallation(): Promise<{ javaPath: string; version: string }> {
+  async verifyInstallation(versionId = GAME_VERSION, useFabric = true): Promise<{ javaPath: string; version: string }> {
     await mkdir(this.gameRoot, { recursive: true })
     await mkdir(this.runtimeRoot, { recursive: true })
-    const version = await this.prepareMinecraft(GAME_VERSION, true)
+    const version = await this.prepareMinecraft(versionId, useFabric)
     const javaPath = await this.prepareJava(version)
     return { javaPath, version: version.id }
   }
 
   async getMinecraftVersions(): Promise<MinecraftVersionOption[]> {
-    const versionList = await retryInstallOperation(() => getVersionList({ fetch: this.reliableFetch }))
+    const versionList = await retryInstallOperation(() => getVersionList({ fetch: this.reliableFetch, remote: VERSION_MANIFEST_URL }))
     const releases = versionList.versions.filter((version) => version.type === 'release')
     return Promise.all(releases.map(async (version) => ({
       id: version.id,
@@ -225,10 +228,12 @@ export class LauncherService {
   }
 
   installContent(type: ContentType, projectId: string, settings: LauncherSettings): Promise<ContentInstallResult> {
+    if (this.operation || this.gameProcess) return Promise.resolve({ ok: false, message: 'İçerik değiştirmek için önce oyunu kapat.' })
     return this.content.install(type, projectId, settings)
   }
 
   toggleContent(type: ContentType, fileName: string, enabled: boolean, settings: LauncherSettings): Promise<InstalledContent[]> {
+    if (this.operation || this.gameProcess) return Promise.reject(new Error('İçerik değiştirmek için önce oyunu kapat.'))
     return this.content.toggle(type, fileName, enabled, settings)
   }
 
@@ -237,6 +242,7 @@ export class LauncherService {
   }
 
   play(settings: LauncherSettings): Promise<LaunchResult> {
+    if (this.content.isInstalling()) return Promise.resolve({ ok: false, message: 'İçerik indirmesinin tamamlanmasını bekle.' })
     if (this.operation) {
       return Promise.resolve({ ok: false, message: 'Oyun zaten hazırlanıyor.' })
     }
@@ -449,9 +455,20 @@ export class LauncherService {
     this.emit('metadata', `Minecraft ${versionId} doğrulanıyor…`, 4)
     const versionList = await retryInstallOperation(() => getVersionList({
       fetch: this.reliableFetch,
+      remote: VERSION_MANIFEST_URL,
     }))
     const metadata = selectVersionMetadata(versionList.versions, versionId)
     if (!metadata) throw new Error(`Minecraft ${versionId} resmi sürüm listesinde bulunamadı.`)
+
+    // Repair invalid cached metadata before the installer resolves dependencies.
+    const metadataPath = join(this.gameRoot, 'versions', versionId, `${versionId}.json`)
+    const metadataHash = (metadata as MinecraftVersion & { sha1?: string }).sha1
+    if (!metadataHash || !/^[a-f0-9]{40}$/i.test(metadataHash)) throw new Error('Minecraft sürüm doğrulama özeti bulunamadı.')
+    await this.downloadVerifiedFile(metadata.url, metadataPath, metadataHash, 'Minecraft sürüm bilgisi')
+    const baseProfile = JSON.parse(await readFile(metadataPath, 'utf8')) as { id?: unknown; inheritsFrom?: unknown }
+    if (baseProfile.id !== versionId || baseProfile.inheritsFrom) {
+      throw new Error(`Minecraft sürüm bilgisi ${versionId} ile eşleşmiyor.`)
+    }
 
     this.emit('minecraft', 'Minecraft dosyaları hazırlanıyor…', 10)
     await this.runTaskWithRetry(
@@ -480,9 +497,17 @@ export class LauncherService {
         }))
         const loader = loaders.find((candidate) => candidate.loader.stable) ?? loaders[0]
         if (!loader) throw new Error(`Minecraft ${versionId} için Fabric Loader bulunamadı. Vanilla seçeneğini kullan.`)
-        fabricVersion = await installFabricByLoaderArtifact(loader, this.gameRoot, {
+        fabricVersion = await installFabric({
+          minecraftVersion: versionId,
+          version: loader.loader.version,
+          minecraft: this.gameRoot,
           side: 'client',
+          fetch: this.reliableFetch,
         })
+      }
+      const fabricProfile = JSON.parse(await readFile(join(this.gameRoot, 'versions', fabricVersion, `${fabricVersion}.json`), 'utf8')) as { inheritsFrom?: unknown }
+      if (fabricProfile.inheritsFrom !== versionId) {
+        throw new Error(`Fabric profili seçilen Minecraft ${versionId} sürümüyle eşleşmiyor.`)
       }
       resolvedVersion = await Version.parse(this.gameRoot, fabricVersion)
     } else {
@@ -503,13 +528,16 @@ export class LauncherService {
       })
       const output = `${result.stdout}\n${result.stderr}`
       const match = output.match(/version\s+"(?:1\.)?(\d+)/i)
-      return match?.[1] !== undefined && Number(match[1]) >= requiredMajor
+      return match?.[1] !== undefined && Number(match[1]) === requiredMajor
     } catch {
       return false
     }
   }
 
   private async prepareJava(version: ResolvedVersion): Promise<string> {
+    if (!version.javaVersion?.component || !Number.isInteger(version.javaVersion.majorVersion) || version.javaVersion.majorVersion < 8) {
+      throw new Error('Minecraft Java sürüm bilgisi geçersiz.')
+    }
     const component = sanitizeRuntimeComponent(version.javaVersion.component)
     const destination = join(this.runtimeRoot, `${component}-${version.javaVersion.majorVersion}`)
     const javaPath = javaExecutablePath(destination, process.platform)
@@ -587,7 +615,7 @@ export class LauncherService {
     process.once('error', clear)
   }
 
-  private async confirmProcessStarted(process: ChildProcess): Promise<void> {
+  private async confirmProcessStarted(process: ChildProcess, gameLogPath?: string): Promise<void> {
     let stderr = ''
     const collect = (chunk: Buffer | string): void => {
       if (stderr.length < 12_000) stderr += chunk.toString()
@@ -608,12 +636,21 @@ export class LauncherService {
       }
       const onError = (error: Error): void => finish(error)
       const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
-        const detail = stderr.trim().slice(-4_000)
-        finish(new Error(`Minecraft erken kapandı (çıkış: ${code ?? signal ?? 'bilinmiyor'}).${detail ? `\n${detail}` : ''}`))
+        const report = async (): Promise<void> => {
+          const output = gameLogPath ? await readFile(gameLogPath, 'utf8').catch(() => stderr) : stderr
+          const detail = output.trim().slice(-4_000)
+          finish(new Error(`Minecraft erken kapandı (çıkış: ${code ?? signal ?? 'bilinmiyor'}).${detail ? `\n${detail}` : ''}`))
+        }
+        clearTimeout(timer)
+        void report()
       }
-      const timer = setTimeout(() => finish(), 2_500)
+      const timer = setTimeout(() => {
+        if (process.exitCode !== null || process.signalCode !== null) onExit(process.exitCode, process.signalCode)
+        else finish()
+      }, 10_000)
       process.once('error', onError)
       process.once('exit', onExit)
+      if (process.exitCode !== null || process.signalCode !== null) onExit(process.exitCode, process.signalCode)
     })
   }
 
@@ -633,6 +670,8 @@ export class LauncherService {
 
       this.emit('launching', 'Minecraft başlatılıyor…', 94)
       const detached = settings.closeOnLaunch
+      const gameLogPath = join(dirname(this.logPath), 'minecraft-last.log')
+      const gameLog = await open(gameLogPath, 'w')
       const process = await launch({
         gamePath: instanceRoot,
         resourcePath: this.gameRoot,
@@ -654,11 +693,11 @@ export class LauncherService {
           cwd: this.gameRoot,
           detached,
           windowsHide: true,
-          stdio: 'pipe',
+          stdio: ['ignore', gameLog.fd, gameLog.fd],
         },
-      })
+      }).finally(() => gameLog.close())
 
-      await this.confirmProcessStarted(process)
+      await this.confirmProcessStarted(process, gameLogPath)
       await this.log(`Minecraft işlemi başladı (PID: ${process.pid ?? 'bilinmiyor'}).`)
       if (detached) {
         process.stdout?.destroy()

@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import type { LauncherSettings } from '../shared/contracts'
 
 export const DEFAULT_SETTINGS: LauncherSettings = Object.freeze({
@@ -58,15 +59,26 @@ export async function readSettings(userDataPath: string): Promise<LauncherSettin
   }
 }
 
-export async function saveSettings(
+const pendingWrites = new Map<string, Promise<LauncherSettings>>()
+
+export function saveSettings(
   userDataPath: string,
   value: unknown,
 ): Promise<LauncherSettings> {
   const settings = normalizeSettings(value)
+  const previous = pendingWrites.get(userDataPath) ?? Promise.resolve(settings)
+  const operation = previous.catch(() => settings).then(() => writeSettings(userDataPath, settings))
+  pendingWrites.set(userDataPath, operation)
+  return operation.finally(() => {
+    if (pendingWrites.get(userDataPath) === operation) pendingWrites.delete(userDataPath)
+  })
+}
+
+async function writeSettings(userDataPath: string, settings: LauncherSettings): Promise<LauncherSettings> {
   await mkdir(userDataPath, { recursive: true })
 
   const destination = settingsPath(userDataPath)
-  const temporary = join(userDataPath, `settings.${process.pid}.tmp`)
+  const temporary = join(userDataPath, `settings.${process.pid}.${randomUUID()}.tmp`)
   await writeFile(temporary, `${JSON.stringify(settings, null, 2)}\n`, {
     encoding: 'utf8',
     mode: 0o600,

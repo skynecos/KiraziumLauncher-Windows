@@ -40,4 +40,4 @@ Windows kurulum dosyası:
 npm run dist:win
 ```
 
-Çıktı `release/KiraziumLauncher-Setup-0.5.0.exe` yolunda oluşur.
+Çıktı `release/KiraziumLauncher-Setup-0.5.7.exe` yolunda oluşur.

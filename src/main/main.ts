@@ -166,6 +166,7 @@ function createMainWindow(): BrowserWindow {
     frame: false,
     backgroundColor: '#111015',
     title: 'Kirazium Launcher',
+    icon: join(__dirname, '..', 'renderer', 'assets', 'kirazium-logo.png'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: join(__dirname, '..', 'preload', 'preload.js'),

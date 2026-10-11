@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
+import { access, mkdir, readFile, readdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import type {
   ContentInstallResult,
@@ -22,10 +22,14 @@ interface ModrinthFile {
 }
 
 interface ModrinthVersion {
+  id: string
   project_id: string
+  game_versions: string[]
+  loaders: string[]
   files: ModrinthFile[]
   dependencies?: Array<{
     project_id?: string | null
+    version_id?: string | null
     dependency_type?: string
   }>
 }
@@ -62,7 +66,10 @@ function toInstalledContent(type: ContentType, fileName: string, resourcePacks: 
 }
 
 export class ContentService {
+  private installing = false
   constructor(private readonly gameRoot: string) {}
+
+  isInstalling(): boolean { return this.installing }
 
   getInstanceRoot(settings: LauncherSettings): string {
     return join(this.gameRoot, 'instances', instanceKey(settings))
@@ -90,7 +97,9 @@ export class ContentService {
     settings: LauncherSettings,
   ): Promise<InstalledContent[]> {
     if (!isSafeContentFile(type, fileName)) throw new Error('Geçersiz içerik dosyası.')
+    if (this.installing) throw new Error('İndirme tamamlanmadan içerik durumu değiştirilemez.')
     const directory = this.getContentDirectory(type, settings)
+    await access(join(directory, fileName))
     if (type === 'resourcepack') {
       const active = await this.readActiveResourcePacks(settings)
       const key = `file/${fileName}`
@@ -129,6 +138,7 @@ export class ContentService {
         author?: unknown
         downloads?: unknown
         project_type?: unknown
+        icon_url?: unknown
       }>
     }
     if (!Array.isArray(result.hits)) throw new Error('Modrinth arama sonucu geçersiz.')
@@ -136,6 +146,7 @@ export class ContentService {
     return result.hits.flatMap((hit) => {
       if (typeof hit.project_id !== 'string' || typeof hit.title !== 'string') return []
       return [{
+        iconUrl: typeof hit.icon_url === 'string' && /^https:\/\/cdn\.modrinth\.com\//.test(hit.icon_url) ? hit.icon_url : null,
         projectId: hit.project_id,
         title: hit.title,
         description: typeof hit.description === 'string' ? hit.description : '',
@@ -156,46 +167,133 @@ export class ContentService {
       return { ok: false, message: 'Mod kurmak için bu profilde Fabric’i etkinleştir.' }
     }
 
+    if (this.installing) return { ok: false, message: 'Başka bir içerik indiriliyor. Tamamlanmasını bekle.' }
+    this.installing = true
+    settings = { ...settings }
     try {
-      const installed = new Set<string>()
-      await this.installProject(type, projectId, settings, installed, 0)
-      return { ok: true, message: 'İçerik ve gerekli bağımlılıkları indirildi.' }
+      const directory = this.getContentDirectory(type, settings)
+      await mkdir(directory, { recursive: true })
+      const existing: Array<{ fileName: string; version: ModrinthVersion }> = []
+      {
+        for (const fileName of await readdir(directory)) {
+          if (!fileName.toLowerCase().endsWith(expectedExtension(type))) continue
+          const hash = createHash('sha1').update(await readFile(join(directory, fileName))).digest('hex')
+          try {
+            existing.push({ fileName, version: await this.fetchJson(`${MODRINTH_API}/version_file/${hash}?algorithm=sha1`) as ModrinthVersion })
+          } catch (error) {
+            if (!(error instanceof Error) || !error.message.includes('HTTP 404')) throw error
+          }
+        }
+      }
+      const plan = new Map<string, ModrinthVersion>()
+      await this.resolveProject(type, projectId, settings, plan, 0)
+      // Keep exact requirements of mods that remain installed in this profile.
+      for (const item of type === 'mod' ? existing : []) {
+        if (plan.has(item.version.project_id)) continue
+        for (const dependency of item.version.dependencies ?? []) {
+          if (dependency.dependency_type !== 'required' || !dependency.project_id || !dependency.version_id || !plan.has(dependency.project_id)) continue
+          if (plan.get(dependency.project_id)?.id !== dependency.version_id) {
+            throw new Error('Bu indirme mevcut bir modun bağımlılığıyla çakışıyor. Önce ilgili modu güncelle veya Yüklüler bölümünden kapat.')
+          }
+        }
+      }
+      const staging = join(this.getInstanceRoot(settings), '.content-downloads', `${Date.now()}-${process.pid}`)
+      const files: Array<{ projectId: string; file: ModrinthFile }> = []
+      for (const version of plan.values()) {
+        const file = version.files.find(candidate => candidate.primary) ?? version.files[0]
+        if (!file || !isSafeContentFile(type, file.filename) || file.filename.endsWith('.disabled')) throw new Error('Uyumlu indirme dosyası bulunamadı.')
+        if (files.some(item => item.file.filename === file.filename)) throw new Error('İçerik dosya adları çakışıyor.')
+        await this.downloadFile(file, staging)
+        files.push({ projectId: version.project_id, file })
+      }
+      const backup = join(this.getInstanceRoot(settings), '.content-backups', `${Date.now()}-${process.pid}`)
+      const moved: string[] = []
+      const committed: string[] = []
+      const activePacks = type === 'resourcepack' ? await this.readActiveResourcePacks(settings) : new Set<string>()
+      await mkdir(backup, { recursive: true })
+      try {
+        for (const fileName of await readdir(directory)) {
+          if (!files.some(item => item.file.filename === fileName || existing.some(old => old.fileName === fileName && old.version.project_id === item.projectId))) continue
+          await rename(join(directory, fileName), join(backup, fileName))
+          moved.push(fileName)
+        }
+        for (const { file } of files) {
+          await rename(join(staging, file.filename), join(directory, file.filename))
+          committed.push(file.filename)
+        }
+        if (type === 'resourcepack') {
+          for (const old of existing) {
+            const replacement = files.find(item => item.projectId === old.version.project_id)
+            if (replacement && activePacks.delete(`file/${old.fileName}`)) activePacks.add(`file/${replacement.file.filename}`)
+          }
+          await this.writeActiveResourcePacks(settings, activePacks)
+        }
+      } catch (error) {
+        for (const fileName of committed) await unlink(join(directory, fileName))
+        for (const fileName of moved) await rename(join(backup, fileName), join(directory, fileName))
+        throw error
+      }
+      return { ok: true, message: `${settings.gameVersion} ${settings.useFabric ? 'Fabric' : 'Vanilla'} profiline uyumlu içerik ve bağımlılıkları indirildi.` }
     } catch (error: unknown) {
       return { ok: false, message: error instanceof Error ? error.message : 'İçerik indirilemedi.' }
+    } finally {
+      this.installing = false
     }
   }
 
-  private async installProject(
+  private async resolveProject(
     type: ContentType,
     projectId: string,
     settings: LauncherSettings,
-    installed: Set<string>,
+    plan: Map<string, ModrinthVersion>,
     depth: number,
+    exactVersionId?: string,
   ): Promise<void> {
-    if (installed.has(projectId)) return
+    const previous = plan.get(projectId)
+    if (previous) {
+      if (exactVersionId && previous.id !== exactVersionId) throw new Error('Mod bağımlılıkları farklı sürümler gerektiriyor; birlikte kurulamaz.')
+      return
+    }
     if (depth > 12) throw new Error('İçerik bağımlılık zinciri çok uzun.')
-    installed.add(projectId)
 
     const parameters = new URLSearchParams({
       game_versions: JSON.stringify([settings.gameVersion]),
       include_changelog: 'false',
     })
     if (type === 'mod') parameters.set('loaders', JSON.stringify(['fabric']))
-    const versions = await this.fetchJson(
+    const versions = (exactVersionId ? [await this.fetchJson(`${MODRINTH_API}/version/${encodeURIComponent(exactVersionId)}`)] : await this.fetchJson(
       `${MODRINTH_API}/project/${encodeURIComponent(projectId)}/version?${parameters.toString()}`,
-    ) as ModrinthVersion[]
-    const version = Array.isArray(versions) ? versions[0] : undefined
-    if (!version) throw new Error(`${settings.gameVersion} için uyumlu sürüm bulunamadı.`)
+    )) as ModrinthVersion[]
+    if (!Array.isArray(versions) || !versions.length) throw new Error(`${settings.gameVersion} için uyumlu sürüm bulunamadı.`)
+    let lastError: unknown
+    for (const version of versions) {
+      const savedPlan = new Map(plan)
+      try {
+        if (version.project_id !== projectId || !version.game_versions?.includes(settings.gameVersion) || (type === 'mod' && !version.loaders?.includes('fabric'))) {
+          throw new Error(`${settings.gameVersion} için bu içerik veya bağımlılığı uyumlu değil. Başka bir sürüm seç.`)
+        }
+        plan.set(projectId, version)
 
-    for (const dependency of type === 'mod' ? version.dependencies ?? [] : []) {
-      if (dependency.dependency_type === 'required' && typeof dependency.project_id === 'string') {
-        await this.installProject('mod', dependency.project_id, settings, installed, depth + 1)
+        for (const dependency of type === 'mod' ? version.dependencies ?? [] : []) {
+          if (dependency.dependency_type === 'required') {
+            let dependencyProject = dependency.project_id
+            if (!dependencyProject && dependency.version_id) {
+              const detail = await this.fetchJson(`${MODRINTH_API}/version/${encodeURIComponent(dependency.version_id)}`) as ModrinthVersion
+              dependencyProject = detail.project_id
+            }
+            if (!dependencyProject) throw new Error('Gerekli mod bağımlılığının projesi belirlenemedi.')
+            await this.resolveProject('mod', dependencyProject, settings, plan, depth + 1, dependency.version_id ?? undefined)
+          }
+        }
+        return
+      } catch (error) {
+        plan.clear()
+        for (const [key, value] of savedPlan) plan.set(key, value)
+        if (!(error instanceof Error) || /HTTP|fetch|network/i.test(error.message)) throw error
+        lastError = error
       }
     }
-
-    const file = version.files.find((candidate) => candidate.primary) ?? version.files[0]
-    if (!file || !isSafeContentFile(type, file.filename)) throw new Error('Uyumlu indirme dosyası bulunamadı.')
-    await this.downloadFile(file, this.getContentDirectory(type, settings))
+    throw lastError
   }
 
   private async downloadFile(file: ModrinthFile, directory: string): Promise<void> {
@@ -213,7 +311,7 @@ export class ContentService {
     })
     if (!response.ok) throw new Error(`İçerik indirilemedi (HTTP ${response.status}).`)
     const bytes = Buffer.from(await response.arrayBuffer())
-    if (bytes.length > MAX_CONTENT_BYTES) throw new Error('İçerik dosyası çok büyük.')
+    if (bytes.length > MAX_CONTENT_BYTES || bytes.length !== file.size) throw new Error('İçerik dosyasının boyutu doğrulanamadı.')
 
     const algorithm = file.hashes.sha512 ? 'sha512' : 'sha1'
     const expected = file.hashes.sha512 ?? file.hashes.sha1

@@ -1,6 +1,9 @@
 const assert = require('node:assert/strict')
 const { test } = require('node:test')
-const { DEFAULT_SETTINGS, normalizeSettings } = require('../dist/main/settings.js')
+const { DEFAULT_SETTINGS, normalizeSettings, saveSettings, readSettings } = require('../dist/main/settings.js')
+const { mkdtemp, rm } = require('node:fs/promises')
+const { tmpdir } = require('node:os')
+const { join } = require('node:path')
 
 test('geçersiz ayarlar güvenli varsayılanlara döner', () => {
   assert.deepEqual(normalizeSettings(null), DEFAULT_SETTINGS)
@@ -28,4 +31,11 @@ test('sürüm ve Fabric profili güvenli biçimde kaydedilir', () => {
   assert.equal(custom.gameVersion, '1.20.1')
   assert.equal(custom.useFabric, false)
   assert.equal(normalizeSettings({ gameVersion: '../tehlikeli' }).gameVersion, '26.1.2')
+})
+
+test('eşzamanlı ayar kayıtları geçici dosya çakışmasına yol açmaz', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'kirazium-settings-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  await Promise.all(Array.from({ length: 20 }, (_, i) => saveSettings(root, { ...DEFAULT_SETTINGS, nickname: `Test${i}` })))
+  assert.match((await readSettings(root)).nickname, /^Test\d+$/)
 })

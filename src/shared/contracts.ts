@@ -24,6 +24,7 @@ export interface InstalledContent {
 }
 
 export interface ContentProject {
+  iconUrl: string | null
   projectId: string
   title: string
   description: string
